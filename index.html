@@ -103,8 +103,11 @@ h2{font-size:17px;color:var(--verde);margin-bottom:12px}
 .mov.E .cant{color:var(--ok)}.mov.S .cant{color:var(--guinda)}
 
 /* etiquetas */
-#zonaEtiqueta{text-align:center;padding:14px;border:1px dashed var(--linea);border-radius:10px;margin-top:12px;display:none}
-#zonaEtiqueta .desc-et{font-size:12px;font-weight:700;margin-bottom:4px}
+#zonaEtiqueta{display:none;grid-gap:2mm;padding:10px;border:1px dashed var(--linea);border-radius:10px;margin-top:12px;background:#fff;max-height:340px;overflow:auto}
+#zonaEtiqueta.ver{display:grid}
+.etq{border:0.3mm dashed #bbb;border-radius:1mm;padding:1.5mm 1mm;text-align:center;overflow:hidden;page-break-inside:avoid;background:#fff}
+.etq .d{font-size:7pt;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.etq svg{max-width:100%;height:auto}
 
 .aviso{padding:12px 14px;border-radius:10px;font-size:13px;margin-top:12px;display:none}
 .aviso.err{display:block;background:#fdeceb;color:var(--rojo)}
@@ -117,7 +120,8 @@ h2{font-size:17px;color:var(--verde);margin-bottom:12px}
 @media print{
   body *{visibility:hidden}
   #zonaEtiqueta,#zonaEtiqueta *{visibility:visible}
-  #zonaEtiqueta{position:fixed;left:0;top:0;border:none}
+  #zonaEtiqueta{position:absolute;left:0;top:0;width:100%;border:none;max-height:none;overflow:visible;padding:0;margin:0}
+  @page{size:letter;margin:8mm}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -250,15 +254,22 @@ h2{font-size:17px;color:var(--verde);margin-bottom:12px}
 
       <div class="tarjeta">
         <b style="color:var(--dorado);font-size:14px">Etiquetas de código de barras</b>
-        <div class="nota">Para insumos sin código del proveedor: genera una etiqueta Code-128 e imprímela.</div>
+        <div class="nota">Genera hojas de etiquetas Code-128 listas para imprimir (papel carta u hojas adhesivas). Con 3 por fila caben ~30 por página.</div>
         <label>Insumo</label>
         <input id="etClave" list="dlCatalogo" placeholder="Clave o descripción…">
-        <button class="btn secundario" onclick="generarEtiqueta()">Generar etiqueta</button>
-        <div id="zonaEtiqueta">
-          <div class="desc-et" id="etDesc"></div>
-          <svg id="etSvg"></svg>
+        <div class="fila2">
+          <div><label>Cantidad de etiquetas</label><input id="etCant" type="number" min="1" max="5000" value="30" inputmode="numeric"></div>
+          <div><label>Por fila</label><select id="etCols">
+            <option value="2">2 (grandes)</option>
+            <option value="3" selected>3 (estándar)</option>
+            <option value="4">4 (chicas)</option>
+            <option value="5">5 (mini)</option>
+          </select></div>
         </div>
-        <button class="btn secundario" id="btnImprimir" style="display:none" onclick="window.print()">🖨️ Imprimir etiqueta</button>
+        <button class="btn secundario" onclick="generarEtiqueta()">Generar etiquetas</button>
+        <div id="zonaEtiqueta"></div>
+        <button class="btn secundario" id="btnImprimir" style="display:none" onclick="window.print()">🖨️ Imprimir</button>
+        <div class="nota" id="etInfo"></div>
       </div>
 
       <div class="tarjeta">
@@ -653,10 +664,32 @@ function generarEtiqueta() {
   const item = resolverClave(document.getElementById('etClave').value);
   if (!item) { toast('Selecciona un insumo del catálogo.'); return; }
   const codigo = item.codigo_barras || item.clave;
-  document.getElementById('etDesc').textContent = item.descripcion + ' · ' + item.clave;
-  document.getElementById('zonaEtiqueta').style.display = 'block';
+  const cant = Math.min(Math.max(parseInt(document.getElementById('etCant').value) || 1, 1), 5000);
+  const cols = parseInt(document.getElementById('etCols').value);
+
+  const zona = document.getElementById('zonaEtiqueta');
+  zona.classList.add('ver');
+  zona.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+  const alto = cols <= 2 ? 46 : cols === 3 ? 38 : 30;
+  const fuente = cols <= 3 ? 10 : 8;
+
+  let html = '';
+  for (let i = 0; i < cant; i++) {
+    html += '<div class="etq"><div class="d">' + esc(item.descripcion) + '</div><svg class="cb"></svg></div>';
+  }
+  zona.innerHTML = html;
+
+  // Genera el primer código y clona el SVG al resto (miles en <1 s)
+  const svgs = zona.querySelectorAll('svg.cb');
+  try {
+    JsBarcode(svgs[0], codigo, { format: 'CODE128', height: alto, fontSize: fuente, margin: 2, displayValue: true });
+  } catch (e) { toast('El código contiene caracteres no válidos.'); zona.classList.remove('ver'); return; }
+  const modelo = svgs[0].outerHTML;
+  for (let i = 1; i < svgs.length; i++) { svgs[i].outerHTML = modelo; }
+
   document.getElementById('btnImprimir').style.display = 'block';
-  JsBarcode('#etSvg', codigo, { format: 'CODE128', height: 60, fontSize: 14, margin: 6 });
+  document.getElementById('etInfo').textContent =
+    '✅ ' + cant + ' etiquetas de "' + item.descripcion + '" (≈ ' + Math.ceil(cant / (cols * 10)) + ' páginas carta). Consejo: imprime primero solo la página 1 de prueba.';
 }
 
 /* ---------- utilerías ---------- */
