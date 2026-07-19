@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Almacén Central · HGR</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<style>
+:root{
+  --verde:#006657; --verde-osc:#004a3f; --guinda:#691C32; --dorado:#BC955C;
+  --fondo:#f2f4f3; --tarjeta:#fff; --texto:#1c2422; --texto-suave:#5c6b67;
+  --linea:#dde4e2; --rojo:#c0392b; --ambar:#d68910; --ok:#1e8449;
+  --radio:12px; --sombra:0 2px 8px rgba(0,40,30,.08);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--fondo);color:var(--texto);min-height:100vh}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:16px;width:100%;padding:11px 12px;border:1px solid var(--linea);border-radius:8px;background:#fff}
+input:focus,select:focus{outline:2px solid var(--verde);border-color:var(--verde)}
+label{display:block;font-size:12px;font-weight:600;color:var(--texto-suave);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 5px}
+.req::after{content:" *";color:var(--guinda)}
+
+#vistaLogin{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px;background:linear-gradient(160deg,var(--verde) 0%,var(--verde-osc) 70%)}
+.login-caja{background:#fff;border-radius:16px;padding:30px 26px;width:100%;max-width:380px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+.login-caja h1{font-size:20px;color:var(--verde);line-height:1.25}
+.login-caja .sub{font-size:12px;color:var(--texto-suave);margin-top:4px;border-left:3px solid var(--dorado);padding-left:8px}
+.btn{display:block;width:100%;padding:13px;border:none;border-radius:8px;background:var(--verde);color:#fff;font-size:16px;font-weight:600;margin-top:20px}
+.btn:active{background:var(--verde-osc)}
+.btn.guinda{background:var(--guinda)}
+.btn.secundario{background:#fff;color:var(--verde);border:1.5px solid var(--verde)}
+.btn:disabled{opacity:.55}
+
+#vistaApp{display:none;padding-bottom:76px}
+header{background:var(--verde);color:#fff;padding:14px 16px;position:sticky;top:0;z-index:10;box-shadow:var(--sombra)}
+header .titulo{font-size:16px;font-weight:700}
+header .usuario{font-size:12px;opacity:.9;margin-top:2px}
+header .rol{display:inline-block;background:var(--dorado);color:#3a2a12;font-size:10px;font-weight:700;padding:1px 8px;border-radius:20px;text-transform:uppercase;margin-left:6px}
+header .salir{position:absolute;right:14px;top:16px;background:rgba(255,255,255,.15);border:none;color:#fff;font-size:12px;padding:6px 12px;border-radius:20px}
+main{padding:16px;max-width:640px;margin:0 auto}
+
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--linea);display:flex;z-index:10;padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:none;background:none;padding:10px 2px 8px;font-size:10.5px;color:var(--texto-suave);display:flex;flex-direction:column;align-items:center;gap:3px}
+nav button .ic{font-size:20px;line-height:1}
+nav button.activo{color:var(--verde);font-weight:700}
+
+.seccion{display:none}.seccion.activa{display:block}
+h2{font-size:17px;color:var(--verde);margin-bottom:12px}
+.tarjeta{background:var(--tarjeta);border-radius:var(--radio);padding:16px;box-shadow:var(--sombra);margin-bottom:12px}
+
+/* existencias */
+.item-stock{background:#fff;border-radius:var(--radio);box-shadow:var(--sombra);margin-bottom:10px;overflow:hidden}
+.item-cab{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer}
+.semaforo{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.s-ok{background:var(--ok)}.s-bajo{background:var(--rojo)}.s-alerta{background:var(--ambar)}.s-cero{background:#7f8c8d}
+.item-info{flex:1;min-width:0}
+.item-desc{font-size:14px;font-weight:600;line-height:1.3}
+.item-meta{font-size:11.5px;color:var(--texto-suave);margin-top:2px}
+.item-total{text-align:right;flex-shrink:0}
+.item-total .num{font-size:19px;font-weight:800;color:var(--verde)}
+.item-total .uni{font-size:10px;color:var(--texto-suave);text-transform:uppercase}
+.lotes{display:none;border-top:1px dashed var(--linea);padding:8px 14px 12px;background:#fbfcfc}
+.item-stock.abierto .lotes{display:block}
+.lote-fila{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #eef1f0;font-size:13px}
+.lote-fila:last-child{border-bottom:none}
+.badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px}
+.b-fefo{background:var(--verde);color:#fff}
+.b-cad-rojo{background:#fdeceb;color:var(--rojo)}
+.b-cad-ambar{background:#fdf3e3;color:var(--ambar)}
+.b-cad-ok{background:#eaf5ee;color:var(--ok)}
+
+.resumen{display:flex;gap:8px;margin-bottom:14px}
+.kpi{flex:1;background:#fff;border-radius:var(--radio);box-shadow:var(--sombra);padding:12px 8px;text-align:center}
+.kpi .n{font-size:22px;font-weight:800}
+.kpi .t{font-size:10px;color:var(--texto-suave);text-transform:uppercase}
+.kpi.rojo .n{color:var(--rojo)}.kpi.ambar .n{color:var(--ambar)}.kpi.verde .n{color:var(--verde)}
+
+/* campo con botón de escaneo */
+.campo-scan{display:flex;gap:8px}
+.campo-scan input{flex:1}
+.btn-scan{flex-shrink:0;width:52px;border:none;border-radius:8px;background:var(--dorado);color:#fff;font-size:22px}
+.btn-scan:active{background:#a37f4a}
+
+/* modal escáner */
+#modalScan{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+#modalScan.abierto{display:flex}
+#lector{width:100%;max-width:420px;border-radius:12px;overflow:hidden;background:#000}
+#modalScan .cerrar{margin-top:16px;background:#fff;color:var(--texto);border:none;padding:12px 30px;border-radius:30px;font-size:15px;font-weight:600}
+#modalScan .titulo-scan{color:#fff;font-size:15px;margin-bottom:14px;text-align:center}
+
+/* salida: lotes */
+.lote-op{display:flex;align-items:center;gap:10px;border:1.5px solid var(--linea);border-radius:10px;padding:11px 12px;margin-top:8px;cursor:pointer}
+.lote-op.sel{border-color:var(--verde);background:#f0f7f5}
+.lote-op input{width:auto}
+.lote-op .li{flex:1;font-size:13px}
+
+/* kardex */
+.mov{background:#fff;border-radius:10px;box-shadow:var(--sombra);padding:11px 14px;margin-bottom:8px;border-left:4px solid var(--linea)}
+.mov.E{border-left-color:var(--ok)}.mov.S{border-left-color:var(--guinda)}.mov.A{border-left-color:var(--dorado)}
+.mov .l1{display:flex;justify-content:space-between;font-size:13px;font-weight:700}
+.mov .l2{font-size:12px;color:var(--texto-suave);margin-top:2px}
+.mov.E .cant{color:var(--ok)}.mov.S .cant{color:var(--guinda)}
+
+/* etiquetas */
+#zonaEtiqueta{text-align:center;padding:14px;border:1px dashed var(--linea);border-radius:10px;margin-top:12px;display:none}
+#zonaEtiqueta .desc-et{font-size:12px;font-weight:700;margin-bottom:4px}
+
+.aviso{padding:12px 14px;border-radius:10px;font-size:13px;margin-top:12px;display:none}
+.aviso.err{display:block;background:#fdeceb;color:var(--rojo)}
+.aviso.ok{display:block;background:#eaf5ee;color:var(--ok)}
+#toast{position:fixed;bottom:86px;left:50%;transform:translateX(-50%);background:var(--texto);color:#fff;padding:11px 20px;border-radius:30px;font-size:14px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:120;max-width:90%;text-align:center}
+#toast.ver{opacity:1}
+.cargando,.vacio{text-align:center;color:var(--texto-suave);padding:26px 12px;font-size:13.5px}
+.fila2{display:flex;gap:10px}.fila2>div{flex:1}
+.nota{font-size:12px;color:var(--texto-suave);margin-top:6px;line-height:1.4}
+@media print{
+  body *{visibility:hidden}
+  #zonaEtiqueta,#zonaEtiqueta *{visibility:visible}
+  #zonaEtiqueta{position:fixed;left:0;top:0;border:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<div id="vistaLogin">
+  <div class="login-caja">
+    <h1>Almacén Central</h1>
+    <div class="sub">Hospital General Reynosa "Dr. José María Cantú Garza"<br>IMSS-Bienestar · Control de inventario</div>
+    <label for="inUsuario">Usuario</label>
+    <input id="inUsuario" autocomplete="username" autocapitalize="none" placeholder="ej. almacen1">
+    <label for="inPass">Contraseña</label>
+    <input id="inPass" type="password" autocomplete="current-password">
+    <button class="btn" id="btnLogin" onclick="login()">Entrar</button>
+    <div id="loginErr" class="aviso"></div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="vistaApp">
+  <header>
+    <div class="titulo">Almacén Central HGR</div>
+    <div class="usuario"><span id="hNombre"></span><span class="rol" id="hRol"></span></div>
+    <button class="salir" onclick="logout()">Salir</button>
+  </header>
+
+  <main>
+    <!-- EXISTENCIAS -->
+    <section id="sec-stock" class="seccion activa">
+      <div class="resumen">
+        <div class="kpi verde"><div class="n" id="kClaves">–</div><div class="t">Claves activas</div></div>
+        <div class="kpi rojo"><div class="n" id="kBajo">–</div><div class="t">Bajo mínimo</div></div>
+        <div class="kpi ambar"><div class="n" id="kCad">–</div><div class="t">Caducan &lt;90 d</div></div>
+      </div>
+      <div class="campo-scan" style="margin-bottom:12px">
+        <input id="buscaStock" placeholder="Buscar o escanear…" oninput="pintaStock()">
+        <button class="btn-scan" onclick="abrirScanner('busca')" title="Escanear con cámara">📷</button>
+      </div>
+      <div id="listaStock" class="cargando">Cargando existencias…</div>
+    </section>
+
+    <!-- ENTRADA -->
+    <section id="sec-entrada" class="seccion">
+      <h2>Registrar entrada</h2>
+      <div class="tarjeta">
+        <label class="req">Insumo (escanea o escribe)</label>
+        <div class="campo-scan">
+          <input id="enClave" list="dlCatalogo" placeholder="Código, clave o descripción…">
+          <button class="btn-scan" onclick="abrirScanner('enClave')">📷</button>
+        </div>
+        <datalist id="dlCatalogo"></datalist>
+        <div id="enDetalle" class="nota"></div>
+        <div class="fila2">
+          <div><label class="req">Lote</label><input id="enLote" placeholder="S/L si no aplica"></div>
+          <div><label>Caducidad</label><input id="enCad" type="date"></div>
+        </div>
+        <div class="nota">Deja la caducidad vacía para papelería o limpieza.</div>
+        <div class="fila2">
+          <div><label class="req">Cantidad</label><input id="enCant" type="number" min="1" inputmode="numeric"></div>
+          <div><label>Referencia (factura)</label><input id="enRef"></div>
+        </div>
+        <label>Origen / proveedor</label>
+        <input id="enOrigen" placeholder="Ej. Remesa IMSS-Bienestar, proveedor…">
+        <label>Observaciones</label>
+        <input id="enObs">
+        <button class="btn" onclick="registrarEntrada()">Registrar entrada</button>
+        <div id="enAviso" class="aviso"></div>
+      </div>
+    </section>
+
+    <!-- SALIDA -->
+    <section id="sec-salida" class="seccion">
+      <h2>Registrar salida</h2>
+      <div class="tarjeta">
+        <label class="req">Insumo (escanea o escribe)</label>
+        <div class="campo-scan">
+          <input id="saClave" list="dlCatalogo" placeholder="Código, clave o descripción…" oninput="pintaLotesSalida()">
+          <button class="btn-scan" onclick="abrirScanner('saClave')">📷</button>
+        </div>
+        <div id="saLotes"></div>
+        <div class="fila2">
+          <div><label class="req">Cantidad</label><input id="saCant" type="number" min="1" inputmode="numeric"></div>
+          <div><label>Referencia (vale)</label><input id="saRef"></div>
+        </div>
+        <label class="req">Servicio destino</label>
+        <select id="saServicio"><option value="">— Selecciona servicio —</option></select>
+        <label>Observaciones</label>
+        <input id="saObs">
+        <button class="btn guinda" onclick="registrarSalida()">Registrar salida</button>
+        <div id="saAviso" class="aviso"></div>
+      </div>
+    </section>
+
+    <!-- KARDEX -->
+    <section id="sec-kardex" class="seccion">
+      <h2>Últimos movimientos</h2>
+      <div id="listaMovs" class="cargando">Cargando movimientos…</div>
+    </section>
+
+    <!-- PANEL ADMIN -->
+    <section id="sec-admin" class="seccion">
+      <h2>Panel de administración</h2>
+      <div class="tarjeta">
+        <b style="color:var(--verde);font-size:14px">Alta de insumo</b>
+        <div class="fila2">
+          <div><label class="req">Clave</label><input id="adClave" autocapitalize="characters"></div>
+          <div><label>Unidad</label><input id="adUnidad" placeholder="PIEZA, CAJA…"></div>
+        </div>
+        <label class="req">Descripción</label>
+        <input id="adDesc">
+        <label>Código de barras (escanéalo del empaque)</label>
+        <div class="campo-scan">
+          <input id="adCB" inputmode="numeric" placeholder="Vacío = usar la clave como código">
+          <button class="btn-scan" onclick="abrirScanner('adCB')">📷</button>
+        </div>
+        <label>Categoría</label>
+        <select id="adCat">
+          <option>MATERIAL DE CURACION</option><option>INSUMO MEDICO</option>
+          <option>PAPELERIA</option><option>LIMPIEZA</option><option>OTRO</option>
+        </select>
+        <div class="fila2">
+          <div><label>Stock mínimo</label><input id="adMin" type="number" min="0"></div>
+          <div><label>Stock máximo</label><input id="adMax" type="number" min="0"></div>
+        </div>
+        <button class="btn" onclick="altaInsumo()">Dar de alta</button>
+        <div id="adAviso" class="aviso"></div>
+      </div>
+
+      <div class="tarjeta">
+        <b style="color:var(--dorado);font-size:14px">Etiquetas de código de barras</b>
+        <div class="nota">Para insumos sin código del proveedor: genera una etiqueta Code-128 e imprímela.</div>
+        <label>Insumo</label>
+        <input id="etClave" list="dlCatalogo" placeholder="Clave o descripción…">
+        <button class="btn secundario" onclick="generarEtiqueta()">Generar etiqueta</button>
+        <div id="zonaEtiqueta">
+          <div class="desc-et" id="etDesc"></div>
+          <svg id="etSvg"></svg>
+        </div>
+        <button class="btn secundario" id="btnImprimir" style="display:none" onclick="window.print()">🖨️ Imprimir etiqueta</button>
+      </div>
+
+      <div class="tarjeta">
+        <b style="color:var(--guinda);font-size:14px">Ajuste de inventario</b>
+        <div class="nota">Cantidad positiva suma, negativa resta. Queda en el kardex con folio A-.</div>
+        <label class="req">Insumo</label>
+        <input id="ajClave" list="dlCatalogo" placeholder="Clave o descripción…">
+        <div class="fila2">
+          <div><label>Lote</label><input id="ajLote" placeholder="S/L"></div>
+          <div><label class="req">Cantidad (±)</label><input id="ajCant" type="number"></div>
+        </div>
+        <label>Motivo</label>
+        <input id="ajObs" placeholder="Conteo físico, merma, corrección…">
+        <button class="btn guinda" onclick="registrarAjuste()">Aplicar ajuste</button>
+        <div id="ajAviso" class="aviso"></div>
+      </div>
+    </section>
+  </main>
+
+  <nav id="navBar">
+    <button data-sec="stock" class="activo" onclick="irA('stock')"><span class="ic">📦</span>Existencias</button>
+    <button data-sec="entrada" onclick="irA('entrada')"><span class="ic">⬇️</span>Entrada</button>
+    <button data-sec="salida" onclick="irA('salida')"><span class="ic">⬆️</span>Salida</button>
+    <button data-sec="kardex" onclick="irA('kardex')"><span class="ic">🗂️</span>Kardex</button>
+    <button data-sec="admin" id="btnAdmin" style="display:none" onclick="irA('admin')"><span class="ic">⚙️</span>Panel</button>
+  </nav>
+</div>
+
+<!-- MODAL DE ESCANEO CON CÁMARA -->
+<div id="modalScan">
+  <div class="titulo-scan">Apunta la cámara al código de barras</div>
+  <div id="lector"></div>
+  <button class="cerrar" onclick="cerrarScanner()">Cancelar</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   CONFIGURACIÓN — datos de tu proyecto Supabase
+   (Settings → API: Project URL y anon public key)
+   ============================================================ */
+const SUPABASE_URL = "https://ybhskbnecoonirvhigaf.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_Al16esxT1buYYxyGkaYhbw_P50ucg6g";
+const DOMINIO_USUARIOS = "@hgr.local"; // los usuarios se crean como usuario@hgr.local
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let perfil = null;       // {nombre, rol, ubicacion}
+let catalogo = [];       // filas de catalogo
+let lotes = [];          // filas de stock_lotes (orden FEFO)
+let servicios = [];
+let loteSeleccionado = null;
+let scanner = null, campoScan = null;
+
+/* ---------- sesión ---------- */
+async function login() {
+  const usuario = document.getElementById('inUsuario').value.trim();
+  const pass = document.getElementById('inPass').value;
+  const err = document.getElementById('loginErr');
+  const btn = document.getElementById('btnLogin');
+  err.className = 'aviso';
+  if (!usuario || !pass) { err.textContent = 'Escribe tu usuario y contraseña.'; err.classList.add('err'); return; }
+  btn.disabled = true; btn.textContent = 'Verificando…';
+  const email = usuario.includes('@') ? usuario : usuario + DOMINIO_USUARIOS;
+  const { error } = await db.auth.signInWithPassword({ email, password: pass });
+  btn.disabled = false; btn.textContent = 'Entrar';
+  if (error) {
+    err.textContent = error.message === 'Invalid login credentials'
+      ? 'Usuario o contraseña incorrectos.' : 'Error: ' + error.message;
+    err.className = 'aviso err'; return;
+  }
+  await arrancarApp();
+}
+
+async function logout() { await db.auth.signOut(); location.reload(); }
+
+async function arrancarApp() {
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) return;
+  const { data: p, error } = await db.from('perfiles').select('*').eq('id', user.id).single();
+  if (error || !p || !p.activo) {
+    toast('Tu perfil no está activo. Contacta al administrador.');
+    await db.auth.signOut(); return;
+  }
+  perfil = p;
+  document.getElementById('vistaLogin').style.display = 'none';
+  document.getElementById('vistaApp').style.display = 'block';
+  document.getElementById('hNombre').textContent = p.nombre + ' · ' + p.ubicacion;
+  document.getElementById('hRol').textContent = p.rol;
+  const esConsulta = p.rol === 'consulta';
+  document.querySelector('[data-sec="entrada"]').style.display = esConsulta ? 'none' : '';
+  document.querySelector('[data-sec="salida"]').style.display = esConsulta ? 'none' : '';
+  document.getElementById('btnAdmin').style.display = p.rol === 'admin' ? '' : 'none';
+  cargarTodo();
+}
+
+/* ---------- carga de datos ---------- */
+async function cargarTodo() {
+  const [rc, rs, rv] = await Promise.all([
+    db.from('catalogo').select('*').eq('activo', true).order('descripcion'),
+    db.from('stock_lotes').select('*'),
+    db.from('servicios').select('nombre').eq('activo', true).order('nombre')
+  ]);
+  if (rc.data) { catalogo = rc.data; pintaDatalist(); }
+  if (rs.data) { lotes = rs.data; }
+  if (rv.data) { servicios = rv.data.map(s => s.nombre); pintaServicios(); }
+  pintaStock();
+  cargarKardex();
+}
+
+async function refrescarStock() {
+  const { data } = await db.from('stock_lotes').select('*');
+  if (data) { lotes = data; pintaStock(); }
+  cargarKardex();
+}
+
+async function cargarKardex() {
+  const { data, error } = await db.from('kardex').select('*').limit(60);
+  const cont = document.getElementById('listaMovs');
+  if (error) { cont.innerHTML = '<div class="vacio">' + esc(error.message) + '</div>'; return; }
+  if (!data.length) { cont.innerHTML = '<div class="vacio">Aún no hay movimientos registrados.</div>'; return; }
+  cont.innerHTML = data.map(m => {
+    const signo = m.tipo === 'ENTRADA' ? '+' : m.tipo === 'SALIDA' ? '−' : '±';
+    const f = new Date(m.creado).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+    return `<div class="mov ${m.tipo.charAt(0)}">
+      <div class="l1"><span>${m.folio} · ${m.tipo}</span><span class="cant">${signo}${Math.abs(m.cantidad)}</span></div>
+      <div class="l2">${esc(m.descripcion || m.clave)} · Lote ${esc(m.lote)}</div>
+      <div class="l2">${f} · ${esc(m.origen_destino)} · ${esc(m.usuario || '')}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ---------- existencias ---------- */
+function stockPorClave() {
+  const map = {};
+  lotes.forEach(l => {
+    if (!map[l.clave]) map[l.clave] = { total: 0, lotes: [] };
+    map[l.clave].total += Number(l.existencia);
+    map[l.clave].lotes.push(l);
+  });
+  return map;
+}
+
+function diasA(fecha) {
+  if (!fecha) return null;
+  return Math.floor((new Date(fecha + 'T12:00:00') - new Date()) / 86400000);
+}
+
+function badgeCad(fecha) {
+  const d = diasA(fecha);
+  if (d === null) return '';
+  if (d < 0)  return `<span class="badge b-cad-rojo">CADUCADO</span>`;
+  if (d < 30) return `<span class="badge b-cad-rojo">Caduca en ${d} d</span>`;
+  if (d < 90) return `<span class="badge b-cad-ambar">Caduca en ${d} d</span>`;
+  return `<span class="badge b-cad-ok">${fecha}</span>`;
+}
+
+function pintaStock() {
+  const q = (document.getElementById('buscaStock').value || '').toLowerCase();
+  const map = stockPorClave();
+  let bajo = 0, cadProx = 0;
+  lotes.forEach(l => { const d = diasA(l.caducidad); if (d !== null && d < 90 && l.existencia > 0) cadProx++; });
+
+  const filas = catalogo
+    .filter(c => !q || c.clave.toLowerCase().includes(q) ||
+                 c.descripcion.toLowerCase().includes(q) ||
+                 (c.codigo_barras || '').includes(q))
+    .map(c => {
+      const s = map[c.clave] || { total: 0, lotes: [] };
+      let clase = 's-ok', estado = 'Stock adecuado';
+      if (s.total <= 0) { clase = 's-cero'; estado = 'Sin existencia'; }
+      else if (c.stock_min && s.total < c.stock_min) { clase = 's-bajo'; estado = 'Bajo el mínimo (' + c.stock_min + ')'; }
+      else if (c.stock_min && s.total <= c.stock_min * 1.2) { clase = 's-alerta'; estado = 'Cerca del mínimo (' + c.stock_min + ')'; }
+      if (clase === 's-bajo') bajo++;
+      const lotesHtml = s.lotes.length
+        ? s.lotes.map((l, i) => `<div class="lote-fila">
+            <span>Lote <b>${esc(l.lote)}</b> ${i === 0 && l.caducidad ? '<span class="badge b-fefo">PEPS</span>' : ''}</span>
+            <span>${badgeCad(l.caducidad)} &nbsp;<b>${l.existencia}</b></span>
+          </div>`).join('')
+        : '<div class="lote-fila">Sin lotes con existencia.</div>';
+      return `<div class="item-stock" onclick="this.classList.toggle('abierto')">
+        <div class="item-cab">
+          <div class="semaforo ${clase}"></div>
+          <div class="item-info">
+            <div class="item-desc">${esc(c.descripcion)}</div>
+            <div class="item-meta">${esc(c.clave)} · ${esc(c.categoria)} · ${estado}</div>
+          </div>
+          <div class="item-total"><div class="num">${s.total}</div><div class="uni">${esc(c.unidad)}</div></div>
+        </div>
+        <div class="lotes">${lotesHtml}</div>
+      </div>`;
+    });
+
+  document.getElementById('kClaves').textContent = catalogo.length;
+  document.getElementById('kBajo').textContent = bajo;
+  document.getElementById('kCad').textContent = cadProx;
+  document.getElementById('listaStock').innerHTML =
+    filas.length ? filas.join('') : '<div class="vacio">No se encontraron insumos con ese criterio.</div>';
+}
+
+/* ---------- catálogo / servicios ---------- */
+function pintaDatalist() {
+  document.getElementById('dlCatalogo').innerHTML =
+    catalogo.map(c => `<option value="${esc(c.clave)}">${esc(c.descripcion)}</option>`).join('');
+}
+function pintaServicios() {
+  document.getElementById('saServicio').innerHTML =
+    '<option value="">— Selecciona servicio —</option>' +
+    servicios.map(s => `<option>${esc(s)}</option>`).join('');
+}
+
+/* Resuelve lo tecleado o escaneado: código de barras > clave > descripción */
+function resolverClave(texto) {
+  const t = (texto || '').trim().toLowerCase();
+  if (!t) return null;
+  return catalogo.find(c => (c.codigo_barras || '').toLowerCase() === t) ||
+         catalogo.find(c => c.clave.toLowerCase() === t) ||
+         catalogo.find(c => c.descripcion.toLowerCase() === t) ||
+         catalogo.find(c => c.descripcion.toLowerCase().includes(t)) || null;
+}
+
+/* ---------- escáner de cámara ---------- */
+function abrirScanner(destino) {
+  campoScan = destino;
+  document.getElementById('modalScan').classList.add('abierto');
+  scanner = new Html5Qrcode('lector');
+  scanner.start(
+    { facingMode: 'environment' },
+    { fps: 10, qrbox: { width: 280, height: 140 } },
+    codigo => { procesaScan(codigo); cerrarScanner(); },
+    () => {} /* sin lectura aún: silencio */
+  ).catch(e => { toast('No se pudo abrir la cámara: ' + e); cerrarScanner(); });
+}
+
+function cerrarScanner() {
+  document.getElementById('modalScan').classList.remove('abierto');
+  if (scanner) { scanner.stop().then(() => scanner.clear()).catch(() => {}); scanner = null; }
+}
+
+function procesaScan(codigo) {
+  navigator.vibrate && navigator.vibrate(80); // "bip" táctil
+  if (campoScan === 'busca') {
+    const item = resolverClave(codigo);
+    document.getElementById('buscaStock').value = item ? item.clave : codigo;
+    pintaStock();
+    toast(item ? '📦 ' + item.descripcion : 'Código no registrado: ' + codigo);
+    return;
+  }
+  const input = document.getElementById(campoScan);
+  const item = resolverClave(codigo);
+  input.value = item ? item.clave : codigo;
+  if (campoScan === 'enClave') muestraDetalleEntrada();
+  if (campoScan === 'saClave') pintaLotesSalida();
+  toast(item ? '✅ ' + item.descripcion : '⚠️ Código no registrado en el catálogo');
+}
+
+/* Soporte pistola USB/Bluetooth: escribe el código y manda Enter */
+function engancharPistola(idInput, alTerminar) {
+  document.getElementById(idInput).addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const item = resolverClave(e.target.value);
+      if (item) { e.target.value = item.clave; toast('✅ ' + item.descripcion); }
+      alTerminar && alTerminar();
+    }
+  });
+}
+
+/* ---------- entrada ---------- */
+function muestraDetalleEntrada() {
+  const item = resolverClave(document.getElementById('enClave').value);
+  document.getElementById('enDetalle').textContent =
+    item ? item.descripcion + ' · ' + item.categoria + ' · ' + item.unidad : '';
+}
+
+async function registrarEntrada() {
+  const av = aviso('enAviso');
+  const item = resolverClave(document.getElementById('enClave').value);
+  const cant = Number(document.getElementById('enCant').value);
+  if (!item) return av('err', 'Selecciona o escanea un insumo válido del catálogo.');
+  if (!(cant > 0)) return av('err', 'Escribe una cantidad mayor a cero.');
+  av('ok', 'Registrando…');
+  const { data, error } = await db.rpc('registrar_entrada', {
+    p_clave: item.clave,
+    p_lote: document.getElementById('enLote').value.trim() || 'S/L',
+    p_caducidad: document.getElementById('enCad').value || null,
+    p_cantidad: cant,
+    p_origen: document.getElementById('enOrigen').value,
+    p_referencia: document.getElementById('enRef').value,
+    p_obs: document.getElementById('enObs').value
+  });
+  if (error) return av('err', limpiaError(error.message));
+  av('ok', '✅ Entrada registrada con folio ' + data.folio);
+  ['enClave','enLote','enCad','enCant','enRef','enOrigen','enObs'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('enDetalle').textContent = '';
+  refrescarStock();
+}
+
+/* ---------- salida (FEFO/PEPS) ---------- */
+function pintaLotesSalida() {
+  const cont = document.getElementById('saLotes');
+  loteSeleccionado = null;
+  const item = resolverClave(document.getElementById('saClave').value);
+  if (!item) { cont.innerHTML = ''; return; }
+  const disp = lotes.filter(l => l.clave === item.clave && l.existencia > 0);
+  if (!disp.length) { cont.innerHTML = '<div class="vacio">Sin existencia disponible para este insumo.</div>'; return; }
+  cont.innerHTML = '<label class="req">Lote a surtir (orden PEPS)</label>' +
+    disp.map((l, i) => `<div class="lote-op ${i === 0 ? 'sel' : ''}" onclick="selLote(this,'${esc(l.lote)}',${l.existencia})">
+      <input type="radio" name="rLote" ${i === 0 ? 'checked' : ''}>
+      <div class="li"><b>Lote ${esc(l.lote)}</b> · Disponible: <b>${l.existencia}</b><br>
+        ${badgeCad(l.caducidad)} ${i === 0 ? '<span class="badge b-fefo">Sugerido PEPS</span>' : ''}</div>
+    </div>`).join('');
+  loteSeleccionado = { lote: disp[0].lote, disponible: Number(disp[0].existencia) };
+}
+
+function selLote(el, lote, disp) {
+  document.querySelectorAll('.lote-op').forEach(x => x.classList.remove('sel'));
+  el.classList.add('sel');
+  el.querySelector('input').checked = true;
+  loteSeleccionado = { lote, disponible: disp };
+}
+
+async function registrarSalida() {
+  const av = aviso('saAviso');
+  const item = resolverClave(document.getElementById('saClave').value);
+  const cant = Number(document.getElementById('saCant').value);
+  const servicio = document.getElementById('saServicio').value;
+  if (!item) return av('err', 'Selecciona o escanea un insumo válido.');
+  if (!loteSeleccionado) return av('err', 'Selecciona el lote a surtir.');
+  if (!(cant > 0)) return av('err', 'Escribe una cantidad mayor a cero.');
+  if (cant > loteSeleccionado.disponible) return av('err', 'La cantidad excede la existencia del lote (' + loteSeleccionado.disponible + ').');
+  if (!servicio) return av('err', 'El servicio destino es obligatorio.');
+  av('ok', 'Registrando…');
+  const { data, error } = await db.rpc('registrar_salida', {
+    p_clave: item.clave, p_lote: loteSeleccionado.lote, p_cantidad: cant,
+    p_servicio: servicio,
+    p_referencia: document.getElementById('saRef').value,
+    p_obs: document.getElementById('saObs').value
+  });
+  if (error) return av('err', limpiaError(error.message));
+  av('ok', '✅ Salida ' + data.folio + ' → ' + servicio);
+  ['saClave','saCant','saRef','saObs'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('saServicio').value = '';
+  document.getElementById('saLotes').innerHTML = '';
+  loteSeleccionado = null;
+  refrescarStock();
+}
+
+/* ---------- admin ---------- */
+async function altaInsumo() {
+  const av = aviso('adAviso');
+  const clave = document.getElementById('adClave').value.trim();
+  const desc = document.getElementById('adDesc').value.trim();
+  if (!clave || !desc) return av('err', 'Clave y descripción son obligatorias.');
+  av('ok', 'Guardando…');
+  const { data, error } = await db.rpc('alta_insumo', {
+    p_clave: clave, p_descripcion: desc,
+    p_categoria: document.getElementById('adCat').value,
+    p_unidad: document.getElementById('adUnidad').value || 'PIEZA',
+    p_codigo_barras: document.getElementById('adCB').value || null,
+    p_min: Number(document.getElementById('adMin').value) || 0,
+    p_max: Number(document.getElementById('adMax').value) || 0
+  });
+  if (error) return av('err', limpiaError(error.message));
+  av('ok', '✅ Insumo ' + data.clave + ' dado de alta.');
+  ['adClave','adDesc','adUnidad','adCB','adMin','adMax'].forEach(id => document.getElementById(id).value = '');
+  const rc = await db.from('catalogo').select('*').eq('activo', true).order('descripcion');
+  if (rc.data) { catalogo = rc.data; pintaDatalist(); pintaStock(); }
+}
+
+async function registrarAjuste() {
+  const av = aviso('ajAviso');
+  const item = resolverClave(document.getElementById('ajClave').value);
+  const cant = Number(document.getElementById('ajCant').value);
+  if (!item) return av('err', 'Selecciona un insumo válido.');
+  if (!cant) return av('err', 'Escribe la cantidad del ajuste (positiva o negativa).');
+  av('ok', 'Aplicando…');
+  const { data, error } = await db.rpc('registrar_ajuste', {
+    p_clave: item.clave,
+    p_lote: document.getElementById('ajLote').value.trim() || 'S/L',
+    p_cantidad: cant,
+    p_obs: document.getElementById('ajObs').value
+  });
+  if (error) return av('err', limpiaError(error.message));
+  av('ok', '✅ Ajuste aplicado con folio ' + data.folio);
+  ['ajClave','ajLote','ajCant','ajObs'].forEach(id => document.getElementById(id).value = '');
+  refrescarStock();
+}
+
+function generarEtiqueta() {
+  const item = resolverClave(document.getElementById('etClave').value);
+  if (!item) { toast('Selecciona un insumo del catálogo.'); return; }
+  const codigo = item.codigo_barras || item.clave;
+  document.getElementById('etDesc').textContent = item.descripcion + ' · ' + item.clave;
+  document.getElementById('zonaEtiqueta').style.display = 'block';
+  document.getElementById('btnImprimir').style.display = 'block';
+  JsBarcode('#etSvg', codigo, { format: 'CODE128', height: 60, fontSize: 14, margin: 6 });
+}
+
+/* ---------- utilerías ---------- */
+function irA(sec) {
+  document.querySelectorAll('.seccion').forEach(s => s.classList.remove('activa'));
+  document.getElementById('sec-' + sec).classList.add('activa');
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('activo', b.dataset.sec === sec));
+  window.scrollTo(0, 0);
+}
+function aviso(id) {
+  const el = document.getElementById(id);
+  return (tipo, msg) => { el.className = 'aviso ' + tipo; el.textContent = msg; };
+}
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('ver');
+  setTimeout(() => t.classList.remove('ver'), 3000);
+}
+function limpiaError(msg) { return String(msg || 'Error desconocido').replace(/^.*?exception:?\s*/i, ''); }
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+/* ---------- arranque ---------- */
+(function () {
+  document.getElementById('inPass').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+  engancharPistola('enClave', muestraDetalleEntrada);
+  engancharPistola('saClave', pintaLotesSalida);
+  engancharPistola('buscaStock', pintaStock);
+  document.getElementById('enClave').addEventListener('input', muestraDetalleEntrada);
+  db.auth.getSession().then(({ data: { session } }) => { if (session) arrancarApp(); });
+})();
+</script>
+</body>
+</html>
