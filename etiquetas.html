@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Etiquetas en lote · Almacén HGR</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<style>
+:root{--verde:#006657;--dorado:#BC955C;--linea:#dde4e2;--suave:#5c6b67}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;background:#f2f4f3;color:#1c2422}
+.panel{max-width:640px;margin:0 auto;padding:20px}
+h1{font-size:18px;color:var(--verde);margin-bottom:4px}
+.sub{font-size:12px;color:var(--suave);border-left:3px solid var(--dorado);padding-left:8px;margin-bottom:16px}
+label{display:block;font-size:12px;font-weight:600;color:var(--suave);text-transform:uppercase;margin:12px 0 4px}
+input,select{width:100%;font-size:16px;padding:10px 12px;border:1px solid var(--linea);border-radius:8px}
+.fila{display:flex;gap:10px}.fila>div{flex:1}
+.btn{display:block;width:100%;padding:13px;border:none;border-radius:8px;background:var(--verde);color:#fff;font-size:16px;font-weight:600;margin-top:18px;cursor:pointer}
+.btn.dorado{background:var(--dorado)}
+.nota{font-size:12px;color:var(--suave);margin-top:10px;line-height:1.5}
+#info{font-size:13px;font-weight:600;color:var(--verde);margin-top:12px}
+
+/* hoja de etiquetas */
+#hoja{display:grid;gap:2mm;padding:8mm;background:#fff;max-width:216mm;margin:16px auto}
+.etq{border:0.3mm dashed #bbb;border-radius:1mm;padding:1.5mm 1mm;text-align:center;overflow:hidden;page-break-inside:avoid}
+.etq .d{font-size:7pt;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.etq svg{max-width:100%;height:auto}
+
+@media print{
+  .panel{display:none}
+  body{background:#fff}
+  #hoja{margin:0;padding:0;gap:2mm}
+  @page{size:letter;margin:8mm}
+}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Etiquetas de código de barras en lote</h1>
+  <div class="sub">Almacén Central · Hospital General Reynosa · IMSS-Bienestar</div>
+
+  <label>Código de barras (clave interna o código del proveedor)</label>
+  <input id="codigo" placeholder="Ej. MC-0001 o 7501001000011" autocapitalize="characters">
+
+  <label>Descripción (aparece arriba del código)</label>
+  <input id="desc" placeholder="Ej. GASA ESTERIL 10X10 CM">
+
+  <div class="fila">
+    <div>
+      <label>Cantidad de etiquetas</label>
+      <input id="cant" type="number" min="1" max="5000" value="500" inputmode="numeric">
+    </div>
+    <div>
+      <label>Etiquetas por fila</label>
+      <select id="cols">
+        <option value="2">2 (grandes)</option>
+        <option value="3" selected>3 (estándar)</option>
+        <option value="4">4 (chicas)</option>
+        <option value="5">5 (mini)</option>
+      </select>
+    </div>
+  </div>
+
+  <button class="btn" onclick="generar()">Generar hoja de etiquetas</button>
+  <button class="btn dorado" id="btnImp" style="display:none" onclick="window.print()">🖨️ Imprimir</button>
+  <div id="info"></div>
+  <div class="nota">
+    Con 3 por fila caben ~30 etiquetas por página carta (500 etiquetas ≈ 17 páginas).
+    Para hojas de etiquetas adhesivas comerciales, elige las columnas que coincidan con tu hoja
+    y ajusta los márgenes en el diálogo de impresión si hace falta.
+    Consejo: imprime una sola página de prueba primero (en el diálogo de impresión indica "página 1").
+  </div>
+</div>
+
+<div id="hoja"></div>
+
+<script>
+function generar(){
+  const codigo = document.getElementById('codigo').value.trim();
+  const desc = document.getElementById('desc').value.trim();
+  const cant = Math.min(Math.max(parseInt(document.getElementById('cant').value)||0,1),5000);
+  const cols = parseInt(document.getElementById('cols').value);
+  if(!codigo){ alert('Escribe el código de barras.'); return; }
+
+  const hoja = document.getElementById('hoja');
+  hoja.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+  const alto = cols <= 2 ? 46 : cols === 3 ? 38 : 30;
+  const fuente = cols <= 3 ? 10 : 8;
+
+  let html = '';
+  for(let i = 0; i < cant; i++){
+    html += '<div class="etq">' +
+      (desc ? '<div class="d">' + esc(desc) + '</div>' : '') +
+      '<svg class="cb"></svg></div>';
+  }
+  hoja.innerHTML = html;
+
+  // Generar el primero y clonar el SVG al resto (500 iguales en <1 s)
+  const svgs = hoja.querySelectorAll('svg.cb');
+  try{
+    JsBarcode(svgs[0], codigo, { format:'CODE128', height:alto, fontSize:fuente, margin:2, displayValue:true });
+  }catch(e){ alert('El código contiene caracteres no válidos: ' + e); return; }
+  const modelo = svgs[0].outerHTML;
+  for(let i = 1; i < svgs.length; i++){ svgs[i].outerHTML = modelo; }
+
+  document.getElementById('btnImp').style.display = 'block';
+  document.getElementById('info').textContent =
+    '✅ ' + cant + ' etiquetas generadas (≈ ' + Math.ceil(cant/(cols*10)) + ' páginas). Revisa abajo y pulsa Imprimir.';
+  svgs[0].scrollIntoView({behavior:'smooth'});
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+</script>
+</body>
+</html>
